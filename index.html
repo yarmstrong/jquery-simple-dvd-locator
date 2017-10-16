@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>DVD Discs Locator</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <h1>Disc Locator</h1>
+
+  <form id="form-filters" action="#">
+    <fieldset>
+      <legend>Filters</legend>
+      <div id="filters"></div>
+      <div class="buttons-wrapper">
+        <input type="button" id="filter-add" value="Add Filter">
+        <input type="submit" id="filter-apply" value="Apply Filters">
+      </div>
+    </fieldset>
+  </form> 
+
+  <div id="panel-results">
+    <table id="results">
+      <tr>
+        <th>Title</th>
+        <th>Year</th>
+        <th>Binder</th>
+        <th>Page</th>
+        <th>Slot</th>
+        <th>Viewed</th>
+      </tr>
+    </table>
+  </div>
+
+  <!-- hidden templates
+    Legend:
+    templates: storage of templates and is hidden from view
+    template: refers to single template in general
+    filter-chooser: template to be used to select what filters to used
+
+    all filter-type select option tag is given a custom data attr of
+    data-template-type: it determines what type of filter control will
+    be used for the selected filter field. each template-type would
+    have a corresponding template to use. class matches the 
+    data-template-type value on the field chooser drop-down
+
+    now, to use the template is just a matter of selecting the correct
+    class of template-type (template-title, template-year, etc) and
+    cloning it and then attaching this copy to wherever you want to 
+    put it
+  -->
+  <div class="templates">
+
+    <div class="template filter-chooser">
+      <input type="button" class="filter-remover" value="X">
+      <select name="filter" class="filter-type">
+        <option value="" data-template-type="" selected>Choose a filter</option>
+        <option value="title" data-template-type="template-title">DVD Title</option>
+        <option value="binder" data-template-type="template-binder">Binder</option>
+        <option value="year" data-template-type="template-year">Release Date</option>
+        <option value="viewed" data-template-type="template-viewed">Viewed?</option>
+      </select>
+    </div>
+
+    <div class="template template-title">
+      <select name="title-condition">
+        <option value="contains">contains</option>
+        <option value="starts-with">starts with</option>
+        <option value="ends-with">ends with</option>
+        <option value="equal">is exactly</option>
+      </select>
+      <input type="text" name="title">
+    </div>
+
+    <div class="template template-binder">
+      <input type="text" name="binder-max">
+      <span>through</span>
+      <input type="text" name="binder-max">
+    </div>
+
+    <div class="template template-year">
+      <input type="text" name="year-min">
+      <span>through</span>
+      <input type="text" name="year-max">
+    </div>
+
+    <div class="template template-viewed">
+      <label><input type="radio" name="viewed" value="true" checked> Yes</label>
+      <label><input type="radio" name="viewed" value="false"> No</label>
+    </div>
+
+  </div>
+  
+  <script src="../js/jquery-3.2.1.js"></script>
+  <script>
+
+    /**
+     * initialize the jquery selections that will be referenced several times
+     */
+    var movieList;
+    var $filters = $('#filters');
+    var templatesAvailable = $('.template', '.templates').not('.filter-chooser').length;
+    
+    /**
+     * upon page loading, retireve the movies.json and save it to a global variable
+     * then trigger a custom event to let the page know that it has finished 
+     * movie list retrieval so it could continue with the process
+     */
+    $.getJSON('movies.json', function(data) {
+      movieList = data;
+      $(document).trigger('moviesLoaded');
+    });
+
+    $(document).on('moviesLoaded', function() {
+
+      // event delegations on 2 elements of the dynamically added template
+      $('#filters')
+        .on('change', '.filter-type', function() {
+          // add change handler when filter-type option is modified
+          var $this = $(this);
+          var $filter = $this.closest('.filter');
+          var filterType = $this.find(':selected').data('template-type');
+          
+          // removes any old control of class qualifier
+          $('.qualifier', $filter).remove();
+
+          // retrieves and appends the corresponding template based on the filter type
+          $('div.template.' + filterType)
+            .clone()
+            .addClass('qualifier')
+            .appendTo($filter);
+
+          // finally removed the default "Choose a filter"
+          $this.find('option[value=""]').remove();
+        })
+        .on('click', '.filter-remover', function() {
+          // add click handler when filter-remover button is clicked to remove filter
+          $(this).closest('.filter').remove();
+        }); // end event delegations
+      
+      // add click handler when 'Add Filter' button is clicked
+      $('#filter-add')
+        .click(function() {
+          /** 
+          * step1: verifies if a filter was chosen before selecting another one 
+          * it checks the value of the selected filter option of the latest filter
+          * template, if none is selected it defaults to "" forcing you to update
+          * first else it will always terminate the function prematurely
+          */
+          if ($filters.find('.template:last .filter-type').val() === '') {
+            return;
+          }
+
+          /** 
+          * step2: finds filters already in use
+          * note that this is dependent on step1 bec step1 needs to populate the filter
+          * type template whose class will be checked for regex match. if this is not
+          * populated, match() will return an error bec it cannot match a regex with
+          * undefined. then finally use get() or toArray() to get all matched template
+          * type values
+          */
+          var filterInUse = $filters
+            .children()
+            .map(function() {
+              return $(this)
+                      .children('.template')
+                      .attr('class')
+                      .match(/\b(template-.+?)\b/g)[0];
+            })
+            .get();
+          
+          /** 
+          * step3: checks the info from step2 against the templatesAvailable
+          * if all templates are in used, should not add anymore filter
+          */
+          if (filterInUse.length === templatesAvailable) {
+            return;
+          }
+
+          /** 
+          * step4: retrieves the template for the filter-chooser which is then
+          * modified to replace its filter-chooser class with filter so that it
+          * will not be referred as one of the templates anymore
+          */
+          var $filterChooser = $('div.template.filter-chooser')
+            .clone()
+            .removeClass('filter-chooser')
+            .addClass('filter');
+          
+          /** 
+          * step5: before attaching this modified filter to the html, need to
+          * remove the filter type already in used from the options. this process
+          * retrieves all filter options and the use filter() to check if its
+          * data-template-type value is included in the list obtained from step2
+          * if true, then these options will be added to the selection that will
+          * be removed afterwards
+          */
+          $filterChooser
+            .find('option[data-template-type]')
+            .filter(function() {
+              return filterInUse
+                      .indexOf($(this).data('template-type')) >= 0;
+            })
+            .remove();
+
+          /** 
+          * step6: append the final filter to the html
+          */
+          $filterChooser.appendTo($filters);
+
+        }).click(); // end 'Add Filter' click handler
+      
+      // process submission
+      $('#form-filters')
+        .submit(function(evt) {
+          evt.preventDefault();
+          
+          // get the form values
+          var titleCondition = $filters.find('select[name="title-condition"]').val();
+          var title = $filters.find('input[name="title"]').val();
+          var binderMin = $filters.find('input[name="binder-min"]').val();
+          var binderMax = $filters.find('input[name="binder-max"]').val();
+          var yearMin = $filters.find('input[name="year-min"]').val();
+          var yearMax = $filters.find('input[name="year-max"]').val();
+          var viewed = $filters.find('input[name="viewed"]:checked').val();
+
+          // remove any previous result
+          $('tr:has(td)', '#results').remove();
+
+          /** 
+           * filter movieList using the form values
+           * validate first if value is undefined (for string) or NaN (for number)
+           */
+          results = $.grep(movieList, function(element, index) {
+            return (
+              (
+                (titleCondition === undefined && title === undefined) ||
+                (titleCondition === 'contains' && element.title.indexOf(title) >= 0) ||
+                (titleCondition === 'stars-with' && element.title.indexOf(title) === 0) ||
+                (titleCondition === 'ends-with' &&  element.title.indexOf(title) === element.title.length - title.length) ||
+                (titleCondition === 'equals' && element.title === title)
+              ) &&
+              (isNaN(binderMin) || element.binder >= binderMin) &&
+              (isNaN(binderMax) || element.binder <= binderMax) &&
+              (isNaN(yearMin) || element.year >= yearMin) &&
+              (isNaN(yearMax) || element.year <= yearMax) &&
+              (viewed === undefined || element.viewed === (viewed === 'true'))
+            );
+          });
+
+          // format movie results into the results table
+          var row;
+          for (var i = 0; i < results.length; i++) {
+            row = '<td>' + results[i].title + '</td>';
+            row += '<td>' + results[i].year + '</td>';
+            row += '<td>' + results[i].binder + '</td>';
+            row += '<td>' + results[i].page + '</td>';
+            row += '<td>' + results[i].slot + '</td>';
+            row += '<td>' + (results[i].viewed ? 'X' : '') + '</td>';
+
+            $('#results').append(
+              $('<tr>').html(row)
+            );
+          }
+        }); // end process submission
+
+    });
+
+  </script>
+</body>
+</html>
