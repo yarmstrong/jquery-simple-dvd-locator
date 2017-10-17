@@ -76,15 +76,15 @@
     </div>
 
     <div class="template template-binder">
-      <input type="text" name="binder-max">
+      <input type="text" name="binder-min" class="numeric">
       <span>through</span>
-      <input type="text" name="binder-max">
+      <input type="text" name="binder-max" class="numeric">
     </div>
 
     <div class="template template-year">
-      <input type="text" name="year-min">
+      <input type="text" name="year-min" class="numeric" placeholder="yyyy">
       <span>through</span>
-      <input type="text" name="year-max">
+      <input type="text" name="year-max" class="numeric" placeholder="yyyy">
     </div>
 
     <div class="template template-viewed">
@@ -96,13 +96,14 @@
   
   <script src="../js/jquery-3.2.1.js"></script>
   <script>
-
     /**
      * initialize the jquery selections that will be referenced several times
      */
     var movieList;
     var $filters = $('#filters');
     var templatesAvailable = $('.template', '.templates').not('.filter-chooser').length;
+    var filterInUse = [];
+    var isValid = true;
     
     /**
      * upon page loading, retireve the movies.json and save it to a global variable
@@ -127,77 +128,139 @@
           // removes any old control of class qualifier
           $('.qualifier', $filter).remove();
 
-          // retrieves and appends the corresponding template based on the filter type
+          /** 
+           * retrieves and appends the corresponding template based on the filter type and should not have a class of qualifier
+           * set autofocus on the first input element on the newly added template
+           * adds blur event handler for the input validations
+           */
           $('div.template.' + filterType)
+            .not('.qualifier')
             .clone()
             .addClass('qualifier')
-            .appendTo($filter);
+            .appendTo($filter)
+            .find('input:first')
+            .focus()
+            .end()
+            .find('input')
+            .blur(validation);
+          
+          filterInUseUpdate();
+          updateFilterChooser();
 
-          // finally removed the default "Choose a filter"
-          $this.find('option[value=""]').remove();
+          // blur event handler for input validation
+          function validation() {
+            var $this = $(this);
+            
+            if ($this.attr('class') && $this.attr('class').indexOf('numeric') != -1 ) {
+              
+              if ($this.val() === '') { 
+                console.log('reset');
+                $this.removeClass('err');
+                $this.siblings('input').removeClass('err');
+                isValid = true;
+                console.log(isValid);
+                return; 
+              }
+
+              var data = +$this.val();
+
+              if (isNaN(data)) {
+                console.log('error: please enter a valid number!');
+                $this.addClass('err');
+                isValid = false;
+                console.log(isValid);
+                return;
+              }
+              else if (data < 0) {
+                console.log('error: cant be negative!');
+                $this.addClass('err');
+                isValid = false;
+                console.log(isValid);
+                return;
+              }
+              else {
+                var $attrName = $this.attr('name');
+                if ($attrName.indexOf('year') != -1) {
+                  if (data.toString().search(/^\d{4}$/) == -1) {
+                    console.log('error: please enter a 4-digit year!');
+                    $this.addClass('err');
+                    isValid = false;
+                    console.log(isValid);
+                    return;
+                  }
+                }
+
+                // get other sibling for min-max comparison only if not empty and a valid number
+                var otherData = $this.siblings('input').val();
+                if (otherData != '' && !isNaN($otherData)) {
+                  if ( (($attrName.indexOf('max') != -1) && (data > +otherData))
+                       || (($attrName.indexOf('min') != -1) && (data < +otherData)) ) {
+                    console.log('a < b, correct');
+                    console.log('reset');
+                    $this.removeClass('err');
+                    $this.siblings('input').removeClass('err');
+                    isValid = true;
+                  }
+                  else {
+                    console.log('a > b, incorrect');
+                    $this.addClass('err');
+                    $this.siblings('input').addClass('err');
+                    isValid = false;
+                  }
+                }
+                else {
+                  console.log('other sibling is not yet populated or still invalid');
+                  $this.removeClass('err');
+                  // isValid = true;
+                }
+                console.log(isValid);
+              }
+            }
+          }
         })
         .on('click', '.filter-remover', function() {
           // add click handler when filter-remover button is clicked to remove filter
           $(this).closest('.filter').remove();
+          filterInUseUpdate();
+          updateFilterChooser();
         }); // end event delegations
       
       // add click handler when 'Add Filter' button is clicked
       $('#filter-add')
         .click(function() {
-          /** 
-          * step1: verifies if a filter was chosen before selecting another one 
-          * it checks the value of the selected filter option of the latest filter
-          * template, if none is selected it defaults to "" forcing you to update
-          * first else it will always terminate the function prematurely
-          */
+
+          /** step1: verify if a filter was chosen before selecting another one 
+           * it checks the value of the selected filter option of the latest filter
+           * template, if none is selected it defaults to "" forcing you to update
+           * first else it will always terminate the function prematurely
+           */
           if ($filters.find('.template:last .filter-type').val() === '') {
             return;
           }
-
-          /** 
-          * step2: finds filters already in use
-          * note that this is dependent on step1 bec step1 needs to populate the filter
-          * type template whose class will be checked for regex match. if this is not
-          * populated, match() will return an error bec it cannot match a regex with
-          * undefined. then finally use get() or toArray() to get all matched template
-          * type values
-          */
-          var filterInUse = $filters
-            .children()
-            .map(function() {
-              return $(this)
-                      .children('.template')
-                      .attr('class')
-                      .match(/\b(template-.+?)\b/g)[0];
-            })
-            .get();
           
-          /** 
-          * step3: checks the info from step2 against the templatesAvailable
-          * if all templates are in used, should not add anymore filter
-          */
+          /** step2: checks the info from step2 against the templatesAvailable
+           * if all templates are in used, should not add anymore filter
+           */
           if (filterInUse.length === templatesAvailable) {
             return;
           }
 
-          /** 
-          * step4: retrieves the template for the filter-chooser which is then
-          * modified to replace its filter-chooser class with filter so that it
-          * will not be referred as one of the templates anymore
-          */
+          /** step3: retrieves the template for the filter-chooser which is then
+           * modified to replace its filter-chooser class with filter so that it
+           * will not be referred as one of the templates anymore
+           */
           var $filterChooser = $('div.template.filter-chooser')
             .clone()
             .removeClass('filter-chooser')
             .addClass('filter');
           
-          /** 
-          * step5: before attaching this modified filter to the html, need to
-          * remove the filter type already in used from the options. this process
-          * retrieves all filter options and the use filter() to check if its
-          * data-template-type value is included in the list obtained from step2
-          * if true, then these options will be added to the selection that will
-          * be removed afterwards
-          */
+          /** step4: before attaching this modified filter to the html, need to
+           * remove the filter type already in used from the options. this process
+           * retrieves all filter options and the use filter() to check if its
+           * data-template-type value is included in the list obtained from step2
+           * if true, then these options will be added to the selection that will
+           * be removed afterwards
+           */
           $filterChooser
             .find('option[data-template-type]')
             .filter(function() {
@@ -206,9 +269,7 @@
             })
             .remove();
 
-          /** 
-          * step6: append the final filter to the html
-          */
+          // step6: append the final filter to the html
           $filterChooser.appendTo($filters);
 
         }).click(); // end 'Add Filter' click handler
@@ -218,6 +279,10 @@
         .submit(function(evt) {
           evt.preventDefault();
           
+          if (!isValid) {
+            return;
+          }
+
           // get the form values
           var titleCondition = $filters.find('select[name="title-condition"]').val();
           var title = $filters.find('input[name="title"]').val();
@@ -234,21 +299,25 @@
            * filter movieList using the form values
            * validate first if value is undefined (for string) or NaN (for number)
            */
+          var elementTitle;
           results = $.grep(movieList, function(element, index) {
+            // all element.title and title to lowercase for comp
+            title = title.toLowerCase();
+            elementTitle = element.title.toLowerCase();
             return (
               (
                 (titleCondition === undefined && title === undefined) ||
-                (titleCondition === 'contains' && element.title.indexOf(title) >= 0) ||
-                (titleCondition === 'stars-with' && element.title.indexOf(title) === 0) ||
-                (titleCondition === 'ends-with' &&  element.title.indexOf(title) === element.title.length - title.length) ||
-                (titleCondition === 'equals' && element.title === title)
+                (titleCondition === 'contains' && elementTitle.indexOf(title) >= 0) ||
+                (titleCondition === 'stars-with' && elementTitle.indexOf(title) === 0) ||
+                (titleCondition === 'ends-with' &&  elementTitle.indexOf(title) === element.title.length - title.length) ||
+                (titleCondition === 'equals' && elementTitle === title)
               ) &&
               (isNaN(binderMin) || element.binder >= binderMin) &&
-              (isNaN(binderMax) || element.binder <= binderMax) &&
+              ((binderMax === '' || binderMax === undefined) ? true : (element.binder <= binderMax)) &&
               (isNaN(yearMin) || element.year >= yearMin) &&
-              (isNaN(yearMax) || element.year <= yearMax) &&
+              ((yearMax === '' || yearMax === undefined) ? true : (element.year <= yearMax)) &&
               (viewed === undefined || element.viewed === (viewed === 'true'))
-            );
+            ); // if number is empty or undefined dont include it
           });
 
           // format movie results into the results table
@@ -268,6 +337,82 @@
         }); // end process submission
 
     });
+
+    function filterInUseUpdate() {
+
+      /** find filters already in use
+       * note that this is dependent on step1 of Add-Filter bec step1 would populate 
+       * the filter type template whose class will be checked for regex match in this
+       * function. if this is not populated, match() will return an error bec it 
+       * cannot match a regex with undefined. then finally use get() or toArray() 
+       * to get all matched template type values
+       */
+      filterInUse = $filters
+        .children()
+        .map(function() {
+          return $(this)
+                  .children('.template')
+                  .attr('class')
+                  .match(/\b(template-.+?)\b/g)[0];
+        })
+        .get();
+    } // end of filterInUseUpdate()
+
+    function updateFilterChooser() {
+
+      /** retrieve only the filter list from the template and removing 
+       * the default option after choosing 
+       */
+      var filterChooserContent = $('div.template.filter-chooser .filter-type')
+        .clone()
+        .find('option[value=""]')
+        .remove()
+        .end()
+        .html();
+      
+      // reset the filter list
+      var $allFilterGrp = $('.filter-type', '#filters');
+      $allFilterGrp.each(function() {
+        $(this).html(filterChooserContent);
+      });
+
+      /** for each filter type from the filterInUse array, remove their corresponding
+       * filter entry in filterGrps not connected to the filter type itself
+       * ie. for a title filter, retain title in the list but remove the others 
+       * found in the filterInUse array. 
+       */
+      for (var i = 0; i < filterInUse.length; i++) {
+        var filterType = filterInUse[i];
+        $allFilterGrp
+          .not(function() {
+            return $(this).siblings('div.template.' + filterType).length;
+          })
+          .find('option[data-template-type="' + filterType + '"]')
+          .remove();
+      }
+
+      /** since the order or index of the select
+       * options will change, need to check the new index of the selected filter
+       * since the new filterGrp has no knowledge which is the preselected options
+       * before, check the type of template it uses then locate the index of 
+       * the corresponding option and assign it to be the selectedIndex
+       */
+      $allFilterGrp.each(function() {
+        var $this = $(this);
+        var index;
+        var className = $this.siblings('.qualifier').attr('class');
+
+        $this
+          .find('option[data-template-type]')
+          .each(function(i) {
+            if (className.indexOf($(this).data('template-type')) >= 0) {
+              index = i;
+            }
+          });
+        
+        this.selectedIndex = index;
+      });
+    } // end of updateFilterChooser()
 
   </script>
 </body>

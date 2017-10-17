@@ -30,4 +30,7 @@ input[type="reset"],
 input[type="button"], 
 button {
 	padding: 0.5em 1em;
-} 
+}
+input.err {
+  color: red;
+}
